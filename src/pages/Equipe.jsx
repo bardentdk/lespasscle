@@ -80,7 +80,9 @@ export default function Equipe() {
 
       // 🚨 DÉCLENCHEMENT DU MAIL MAGIC LINK 🚨
       if (!insertError) {
-        await supabase.auth.signInWithOtp({ email: payload.email });
+        await supabase.auth.resetPasswordForEmail(email_de_la_personne, { 
+            redirectTo: `${window.location.origin}/update-password` 
+        });
       }
     }
 

@@ -154,7 +154,9 @@ export default function Planning() {
       alert("Erreur lors de la création du formateur.");
     } else if (data && data[0]) {
       // 🚨 DÉCLENCHEMENT DU MAIL MAGIC LINK 🚨
-      await supabase.auth.signInWithOtp({ email: newFormateurData.email });
+      await supabase.auth.resetPasswordForEmail(email_de_la_personne, { 
+        redirectTo: `${window.location.origin}/update-password` 
+      });
 
       await fetchInitialData(); 
       setFormData(prev => ({ ...prev, formateur_id: data[0].id })); 

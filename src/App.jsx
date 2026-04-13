@@ -19,6 +19,7 @@ import DashboardApprenant from './pages/DashboardApprenant';
 import Parametres from './pages/Parametres';
 import Exports from './pages/Exports';
 import Equipe from './pages/Equipe';
+import UpdatePassword from './pages/UpdatePassword';
 
 // Composant de protection par rôle
 const RoleProtectedRoute = ({ allowedRoles }) => {
@@ -40,8 +41,10 @@ export default function App() {
             <Route path="/login" element={<Login />} />
 
             <Route element={<ProtectedRoute />}>
+              {/* Page plein écran pour le mot de passe */}
+              <Route path="/update-password" element={<UpdatePassword />} />
               <Route element={<AppLayout />}>
-                
+
                 {/* Routes partagées */}
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/parametres" element={<Parametres />} />

@@ -102,7 +102,9 @@ export default function Apprenants() {
         } else {
           // 🚨 DÉCLENCHEMENT DES MAILS POUR CHAQUE APPRENANT IMPORTÉ 🚨
           for (const user of payload) {
-            await supabase.auth.signInWithOtp({ email: user.email });
+            await supabase.auth.resetPasswordForEmail(email_de_la_personne, { 
+              redirectTo: `${window.location.origin}/update-password` 
+            });
           }
 
           setShowCsvModal(false);
