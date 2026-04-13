@@ -34,29 +34,7 @@ export default function Apprenants() {
     if (!error) setApprenants(data || []);
     setLoading(false);
   };
-  // const fetchApprenants = async () => {
-  //   setLoading(true);
-    
-  //   // On enlève temporairement le .eq('role') pour voir TOUT le contenu de la table
-  //   const { data, error } = await supabase
-  //     .from('profiles')
-  //     .select('*')
-  //     .order('created_at', { ascending: false });
-    
-  //   // REGARDE ICI DANS TA CONSOLE (F12)
-  //   console.log("🛠️ RÉPONSE SUPABASE (Data):", data);
-  //   console.log("🚨 ERREUR SUPABASE (Error):", error);
 
-  //   if (error) {
-  //     console.error("Erreur de chargement:", error.message);
-  //   } else {
-  //     // On filtre côté Javascript pour être plus permissif (ignore les majuscules)
-  //     const apprenantsOnly = (data || []).filter(p => p.role?.toLowerCase().trim() === 'apprenant');
-  //     setApprenants(apprenantsOnly);
-  //   }
-    
-  //   setLoading(false);
-  // };
   // -----------------------------------------------------
   // LOGIQUE 1 : AJOUT MANUEL
   // -----------------------------------------------------
@@ -64,10 +42,6 @@ export default function Apprenants() {
     e.preventDefault();
     setStatusMsg(null);
     
-    // Note Supabase : Idéalement, la création d'un utilisateur se fait via l'Auth API
-    // Mais pour forcer l'insertion côté admin dans la table profiles (si RLS le permet) :
-    
-    // Générer un UUID temporaire pour l'UI (en prod, appeler une Edge Function Supabase)
     const mockId = crypto.randomUUID(); 
 
     const { error } = await supabase.from('profiles').insert([{
@@ -79,6 +53,9 @@ export default function Apprenants() {
     if (error) {
       setStatusMsg({ type: 'error', text: error.message });
     } else {
+      // 🚨 DÉCLENCHEMENT DU MAIL MAGIC LINK 🚨
+      await supabase.auth.signInWithOtp({ email: formData.email });
+
       setShowManualModal(false);
       setFormData({ first_name: '', last_name: '', email: '', phone: '' });
       fetchApprenants();
@@ -95,7 +72,7 @@ export default function Apprenants() {
     setStatusMsg(null);
 
     Papa.parse(file, {
-      header: true, // Le CSV doit avoir des en-têtes : first_name, last_name, email
+      header: true,
       skipEmptyLines: true,
       complete: async (results) => {
         const rows = results.data;
@@ -104,15 +81,14 @@ export default function Apprenants() {
           return;
         }
 
-        // Préparation du payload
         const payload = rows.map(row => ({
-          id: crypto.randomUUID(), // Mock ID (voir Note plus haut)
+          id: crypto.randomUUID(),
           role: 'apprenant',
           first_name: row.first_name || row.prenom || '',
           last_name: row.last_name || row.nom || '',
           email: row.email || '',
           phone: row.phone || row.telephone || null
-        })).filter(u => u.email && u.first_name); // Filtrer les lignes invalides
+        })).filter(u => u.email && u.first_name);
 
         if (payload.length === 0) {
           setStatusMsg({ type: 'error', text: "Format CSV invalide. Colonnes requises : first_name, last_name, email" });
@@ -124,6 +100,11 @@ export default function Apprenants() {
         if (error) {
           setStatusMsg({ type: 'error', text: "Erreur lors de l'import : " + error.message });
         } else {
+          // 🚨 DÉCLENCHEMENT DES MAILS POUR CHAQUE APPRENANT IMPORTÉ 🚨
+          for (const user of payload) {
+            await supabase.auth.signInWithOtp({ email: user.email });
+          }
+
           setShowCsvModal(false);
           fetchApprenants();
         }
@@ -194,7 +175,7 @@ export default function Apprenants() {
                 <tr key={apprenant.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-brand-100 to-purple-100 flex items-center justify-center text-brand-700 font-bold mr-4">
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-brand-100 to-accent-100 flex items-center justify-center text-brand-700 font-bold mr-4">
                         {apprenant.first_name[0]}{apprenant.last_name[0]}
                       </div>
                       <div>
@@ -252,7 +233,7 @@ export default function Apprenants() {
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Téléphone (optionnel)</label>
                 <input type="tel" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
               </div>
-              <button type="submit" className="w-full py-3 mt-4 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700">Enregistrer</button>
+              <button type="submit" className="w-full py-3 mt-4 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700">Enregistrer et inviter</button>
             </form>
           </div>
         </div>

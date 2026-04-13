@@ -18,6 +18,7 @@ import Suivi from './pages/Suivi';
 import DashboardApprenant from './pages/DashboardApprenant';
 import Parametres from './pages/Parametres';
 import Exports from './pages/Exports';
+import Equipe from './pages/Equipe';
 
 // Composant de protection par rôle
 const RoleProtectedRoute = ({ allowedRoles }) => {
@@ -48,10 +49,17 @@ export default function App() {
                 {/* Routes Admin Uniquement */}
                 <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
                   <Route path="/apprenants" element={<Apprenants />} />
+                  <Route path="/equipe" element={<Equipe />} /> {/* <-- NOUVELLE ROUTE ICI */}
                   <Route path="/groupes" element={<Groupes />} />
                   <Route path="/dossiers" element={<Dossiers />} />
                   <Route path="/exports" element={<Exports />} />
                 </Route>
+                {/* <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
+                  <Route path="/apprenants" element={<Apprenants />} />
+                  <Route path="/groupes" element={<Groupes />} />
+                  <Route path="/dossiers" element={<Dossiers />} />
+                  <Route path="/exports" element={<Exports />} />
+                </Route> */}
 
                 {/* Routes Admin & Formateurs */}
                 <Route element={<RoleProtectedRoute allowedRoles={['admin', 'formateur']} />}>

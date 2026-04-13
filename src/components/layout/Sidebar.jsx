@@ -2,8 +2,9 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  LayoutDashboard, Users, Layers, FolderOpen, FileDown,
-  CalendarDays, UserCheck, Settings, LogOut, FileText 
+  LayoutDashboard, Users, Layers, FolderOpen, 
+  CalendarDays, UserCheck, Settings, LogOut, FileText, 
+  FileDown, UserCog 
 } from 'lucide-react';
 import Logo from "../../assets/lespasscle-logo.png";
 export default function Sidebar() {
@@ -14,6 +15,7 @@ export default function Sidebar() {
   const navigation = [
     { name: 'Tableau de bord', href: '/', icon: LayoutDashboard, roles: ['admin', 'formateur', 'apprenant'] },
     { name: 'Annuaire', href: '/apprenants', icon: Users, roles: ['admin'] },
+    { name: 'Équipe & Staff', href: '/equipe', icon: UserCog, roles: ['admin'] }, // <-- NOUVELLE LIGNE ICI
     { name: 'Groupes', href: '/groupes', icon: Layers, roles: ['admin'] },
     { name: 'Dossiers', href: '/dossiers', icon: FolderOpen, roles: ['admin'] },
     { name: 'Mon Dossier', href: '/mon-dossier', icon: FolderOpen, roles: ['apprenant'] },

@@ -94,7 +94,7 @@ export default function Planning() {
 
   // --- LOGIQUE DE SUPPRESSION ---
   const handleDeleteSeance = async (e, seanceId) => {
-    e.stopPropagation(); // Empêche d'autres événements de se déclencher
+    e.stopPropagation();
     if (!window.confirm("Êtes-vous sûr de vouloir annuler cette séance ?")) return;
 
     const { error: deleteError } = await supabase
@@ -105,7 +105,7 @@ export default function Planning() {
     if (deleteError) {
       setError("Impossible de supprimer la séance.");
     } else {
-      fetchSeances(); // Rafraîchit le planning
+      fetchSeances();
     }
   };
 
@@ -153,6 +153,9 @@ export default function Planning() {
     if (error) {
       alert("Erreur lors de la création du formateur.");
     } else if (data && data[0]) {
+      // 🚨 DÉCLENCHEMENT DU MAIL MAGIC LINK 🚨
+      await supabase.auth.signInWithOtp({ email: newFormateurData.email });
+
       await fetchInitialData(); 
       setFormData(prev => ({ ...prev, formateur_id: data[0].id })); 
       setIsFormateurModalOpen(false);
@@ -223,7 +226,6 @@ export default function Planning() {
                     <div key={seance.id} className="group p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-brand-300 transition-all cursor-pointer relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-1.5 h-full bg-brand-500 rounded-l-2xl" />
                       
-                      {/* BOUTON SUPPRIMER (Visible au survol, masqué pour apprenants) */}
                       {role !== 'apprenant' && (
                         <button 
                           onClick={(e) => handleDeleteSeance(e, seance.id)}
@@ -274,7 +276,6 @@ export default function Planning() {
                 <input required type="text" value={formData.title} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 focus:outline-none bg-gray-50 font-medium" onChange={e => setFormData({...formData, title: e.target.value})} placeholder="ex: Anglais Professionnel" />
               </div>
               
-              {/* SÉLECTEUR GROUPE AVEC BOUTON + */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 ml-1">Groupe</label>
                 <div className="flex gap-2">
@@ -288,7 +289,6 @@ export default function Planning() {
                 </div>
               </div>
 
-              {/* SÉLECTEUR FORMATEUR AVEC BOUTON + */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 ml-1">Formateur</label>
                 <div className="flex gap-2">
