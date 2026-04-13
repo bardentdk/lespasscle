@@ -78,10 +78,10 @@ export default function Equipe() {
         .insert([payload]);
       error = insertError;
 
-      // 🚨 DÉCLENCHEMENT DU MAIL MAGIC LINK 🚨
+      // ✅ CORRECTION ICI : on utilise payload.email
       if (!insertError) {
-        await supabase.auth.resetPasswordForEmail(email_de_la_personne, { 
-            redirectTo: `${window.location.origin}/update-password` 
+        await supabase.auth.resetPasswordForEmail(payload.email, { 
+          redirectTo: `${window.location.origin}/update-password` 
         });
       }
     }

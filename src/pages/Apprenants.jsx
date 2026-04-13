@@ -53,8 +53,10 @@ export default function Apprenants() {
     if (error) {
       setStatusMsg({ type: 'error', text: error.message });
     } else {
-      // 🚨 DÉCLENCHEMENT DU MAIL MAGIC LINK 🚨
-      await supabase.auth.signInWithOtp({ email: formData.email });
+      // ✅ CORRECTION ICI : on utilise formData.email
+      await supabase.auth.resetPasswordForEmail(formData.email, { 
+        redirectTo: `${window.location.origin}/update-password` 
+      });
 
       setShowManualModal(false);
       setFormData({ first_name: '', last_name: '', email: '', phone: '' });
@@ -100,9 +102,9 @@ export default function Apprenants() {
         if (error) {
           setStatusMsg({ type: 'error', text: "Erreur lors de l'import : " + error.message });
         } else {
-          // 🚨 DÉCLENCHEMENT DES MAILS POUR CHAQUE APPRENANT IMPORTÉ 🚨
+          // ✅ CORRECTION ICI : on utilise user.email dans la boucle
           for (const user of payload) {
-            await supabase.auth.resetPasswordForEmail(email_de_la_personne, { 
+            await supabase.auth.resetPasswordForEmail(user.email, { 
               redirectTo: `${window.location.origin}/update-password` 
             });
           }
