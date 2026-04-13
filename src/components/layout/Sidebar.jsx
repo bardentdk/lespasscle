@@ -31,8 +31,10 @@ export default function Sidebar() {
   return (
     <div className="flex flex-col h-full w-64 bg-white border-r border-gray-200">
       <div className="flex items-center justify-center h-20 border-b border-gray-100 px-10">
-        <span className="text-xl font-black text-brand-600 tracking-tighter uppercase">
+        <span className="text-xl font-black text-brand-600 tracking-tighter uppercase my-10">
+          <div className='h-5'></div>
           <img src={Logo} alt="" width={150}/>
+          <div className='h-5'></div>
         </span>
       </div>
 
