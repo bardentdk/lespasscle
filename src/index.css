@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Poppins', sans-serif;
+
+  /* 🔵 BLEU "Léspass" (Couleur Principale) */
+  --color-brand-50: #f0f7ff;
+  --color-brand-100: #e0effe;
+  --color-brand-200: #b9ddfe;
+  --color-brand-300: #7cc2fd;
+  --color-brand-400: #36a1fa;
+  --color-brand-500: #0c83eb;
+  --color-brand-600: #006eb8; /* Le bleu exact de ton logo */
+  --color-brand-700: #005896;
+  --color-brand-800: #004a7a;
+  --color-brand-900: #003e66;
+  --color-brand-950: #002845;
+
+  /* 🟡 JAUNE "Clés" (Couleur Secondaire) */
+  --color-accent-50: #fffbeb;
+  --color-accent-100: #fef3c7;
+  --color-accent-200: #fde68a;
+  --color-accent-300: #fcd34d;
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b; /* Le jaune doré de ton logo */
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+  --color-accent-800: #92400e;
+  --color-accent-900: #78350f;
+  --color-accent-950: #451a03;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #f9fafb; /* Fond très clair et épuré */
+    color: #111827; /* Texte sombre pour la lisibilité */
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scrollbar personnalisée aux couleurs de ta marque */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #f3f4f6; }
+  ::-webkit-scrollbar-thumb { background: var(--color-brand-400); border-radius: 100px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-brand-600); }
+
+  /* Sélection de texte */
+  ::selection { background: var(--color-accent-200); color: var(--color-accent-900); }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
