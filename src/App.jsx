@@ -38,7 +38,7 @@ export default function App() {
       <NotificationProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<Login />} />    
 
             <Route element={<ProtectedRoute />}>
               {/* Page plein écran pour le mot de passe */}
