@@ -22,7 +22,6 @@ export default function Dossiers() {
   const [fileTitle, setFileTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   
-  // Deux références distinctes pour les deux actions
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -94,13 +93,15 @@ export default function Dossiers() {
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${selectedApprenant.id}/${fileName}`;
 
+      // 1. Upload dans le bucket 'documents'
       const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
       if (uploadError) throw uploadError;
 
+      // 2. Création de la ligne dans la base de données
       const { error: dbError } = await supabase.from('documents').insert([{
         apprenant_id: selectedApprenant.id,
         title: fileTitle,
-        file_url: filePath, // Modifié pour correspondre à ton schéma SQL (file_url au lieu de file_path)
+        file_url: filePath,
         type: selectedFile.type || 'application/octet-stream',
         uploaded_by: user?.profile?.id
       }]);
@@ -109,8 +110,9 @@ export default function Dossiers() {
       fetchDocuments(selectedApprenant.id);
       resetForm();
     } catch (err) {
-      console.error(err);
-      setError("Erreur lors de l'envoi. Vérifiez la taille du fichier et votre connexion.");
+      console.error("Détail de l'erreur d'upload:", err);
+      // On affiche désormais le VRAI message de l'erreur Supabase pour déboguer plus facilement
+      setError(err.message || "Erreur inattendue lors de l'envoi.");
     } finally {
       setIsUploading(false);
     }
@@ -118,7 +120,10 @@ export default function Dossiers() {
 
   const handleDownload = async (filePath) => {
     const { data, error } = await supabase.storage.from('documents').createSignedUrl(filePath, 60);
-    if (error) alert("Erreur lors de la génération du lien.");
+    if (error) {
+        console.error(error);
+        alert("Erreur lors de la génération du lien : " + error.message);
+    }
     else window.open(data.signedUrl, '_blank');
   };
 
@@ -142,7 +147,6 @@ export default function Dossiers() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
         
-        {/* Colonne de gauche cachée pour l'apprenant */}
         {!isApprenant && (
           <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-gray-100 bg-gray-50">
@@ -172,7 +176,6 @@ export default function Dossiers() {
           </div>
         )}
 
-        {/* Colonne de droite */}
         <div className={`${isApprenant ? 'lg:col-span-4' : 'lg:col-span-3'} bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden`}>
           {!selectedApprenant ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50">
@@ -195,17 +198,15 @@ export default function Dossiers() {
 
               <div className="flex-1 overflow-y-auto p-6 bg-gray-50/30">
                 
-                {/* FORMULAIRE D'UPLOAD AVEC APPAREIL PHOTO */}
                 <form onSubmit={handleUpload} className="mb-8 bg-white p-6 rounded-2xl border border-dashed border-brand-200 shadow-sm">
                   <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center">
                     <UploadCloud className="h-4 w-4 mr-2 text-brand-500" /> 
                     Ajouter un justificatif
                   </h3>
                   
-                  {error && <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-sm text-red-700 flex items-center"><AlertCircle className="h-4 w-4 mr-2" /> {error}</div>}
+                  {error && <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-sm text-red-700 flex items-start"><AlertCircle className="h-5 w-5 mr-2 shrink-0" /> {error}</div>}
                   
                   <div className="space-y-4">
-                    {/* Zone de saisie du titre */}
                     <input 
                       type="text" 
                       required 
@@ -215,13 +216,10 @@ export default function Dossiers() {
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" 
                     />
 
-                    {/* Inputs cachés */}
                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
-                    {/* L'attribut capture="environment" force l'ouverture de l'appareil photo sur mobile */}
                     <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" />
 
                     <div className="flex flex-col sm:flex-row gap-3">
-                      {/* Bouton Appareil Photo */}
                       <button 
                         type="button" 
                         onClick={() => cameraInputRef.current?.click()}
@@ -231,7 +229,6 @@ export default function Dossiers() {
                         Prendre une photo
                       </button>
 
-                      {/* Bouton Explorateur de fichiers */}
                       <button 
                         type="button" 
                         onClick={() => fileInputRef.current?.click()}
@@ -242,7 +239,6 @@ export default function Dossiers() {
                       </button>
                     </div>
 
-                    {/* Feedback du fichier sélectionné */}
                     {selectedFile && (
                       <div className="flex items-center justify-between p-3 bg-green-50 text-green-700 rounded-xl border border-green-100">
                         <div className="flex items-center truncate">
@@ -258,7 +254,6 @@ export default function Dossiers() {
                   </div>
                 </form>
 
-                {/* LISTE DES DOCUMENTS */}
                 <div>
                   <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Documents enregistrés ({documents.length})</h3>
                   {loadingDocs ? (

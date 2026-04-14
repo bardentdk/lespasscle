@@ -16,7 +16,6 @@ import {
   X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext'; // <-- NOUVEL IMPORT ICI
 
 // Utilitaire pour calculer la durée en heures décimales (ex: 09:00 à 10:30 -> 1.5)
 const calculateDuration = (startTime, endTime) => {
@@ -28,34 +27,32 @@ const calculateDuration = (startTime, endTime) => {
 };
 
 export default function Suivi() {
-  const { user } = useAuth(); // <-- RÉCUPÉRATION DE L'UTILISATEUR CONNECTÉ
-  
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [seances, setSeances] = useState([]);
   const [selectedSeance, setSelectedSeance] = useState(null);
   
   const [apprenants, setApprenants] = useState([]);
-  const [presencesData, setPresencesData] = useState({}); 
+  const [presencesData, setPresencesData] = useState({}); // L'état du formulaire de pointage
   
   const [loadingSeances, setLoadingSeances] = useState(false);
   const [loadingApprenants, setLoadingApprenants] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState(null); 
+  const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: '...' }
 
+  // États pour la modale de justificatif
   const [justifModal, setJustifModal] = useState({ open: false, apprenantId: null });
   const [apprenantDocs, setApprenantDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
+  // 1. Charger les séances à chaque changement de date
   useEffect(() => {
-    // On s'assure que l'utilisateur est bien chargé avant de lancer la requête
-    if (user) {
-      fetchSeancesForDate(selectedDate);
-      setSelectedSeance(null);
-      setApprenants([]);
-      setMessage(null);
-    }
-  }, [selectedDate, user]);
+    fetchSeancesForDate(selectedDate);
+    setSelectedSeance(null);
+    setApprenants([]);
+    setMessage(null);
+  }, [selectedDate]);
 
+  // 2. Charger les apprenants et les présences existantes quand on choisit une séance
   useEffect(() => {
     if (selectedSeance) {
       fetchApprenantsAndPresences(selectedSeance);
@@ -65,21 +62,11 @@ export default function Suivi() {
 
   const fetchSeancesForDate = async (date) => {
     setLoadingSeances(true);
-    
-    // 1. On prépare la requête de base (pour le jour sélectionné)
-    let query = supabase
+    const { data, error } = await supabase
       .from('seances')
       .select('*, groupes(name), profiles(first_name, last_name)')
       .eq('date', date)
       .order('start_time');
-
-    // 2. LE FILTRE MAGIQUE : Si c'est un formateur, il ne voit QUE ses propres séances
-    if (user?.profile?.role === 'formateur') {
-      query = query.eq('formateur_id', user.profile.id);
-    }
-
-    // L'Admin passera outre ce if et verra toutes les séances
-    const { data, error } = await query;
 
     if (error) console.error(error);
     else setSeances(data || []);
@@ -89,11 +76,13 @@ export default function Suivi() {
   const fetchApprenantsAndPresences = async (seance) => {
     setLoadingApprenants(true);
     
+    // A. Récupérer les apprenants du groupe lié à la séance
     const { data: groupeData, error: groupeError } = await supabase
       .from('groupes_apprenants')
       .select('profiles(id, first_name, last_name)')
       .eq('groupe_id', seance.groupe_id);
 
+    // B. Récupérer les présences DÉJÀ enregistrées pour cette séance
     const { data: existingPresences, error: presencesError } = await supabase
       .from('presences')
       .select('*')
@@ -108,10 +97,12 @@ export default function Suivi() {
     const apprenantsList = groupeData.map(g => g.profiles).sort((a, b) => a.last_name.localeCompare(b.last_name));
     setApprenants(apprenantsList);
 
+    // C. Préparer le state du formulaire
     const dureeSeance = calculateDuration(seance.start_time, seance.end_time);
     const presencesMap = {};
 
     apprenantsList.forEach(apprenant => {
+      // Vérifier si l'apprenant a déjà été pointé
       const existing = existingPresences?.find(p => p.apprenant_id === apprenant.id);
       
       if (existing) {
@@ -122,6 +113,7 @@ export default function Suivi() {
           justificatif_id: existing.justificatif_id || null
         };
       } else {
+        // Par défaut: on le met présent avec la totalité des heures
         presencesMap[apprenant.id] = {
           status: 'present',
           heures_validees: dureeSeance,
@@ -140,6 +132,7 @@ export default function Suivi() {
       const current = prev[apprenantId];
       const dureeSeance = calculateDuration(selectedSeance.start_time, selectedSeance.end_time);
       
+      // Ajustement automatique des heures selon le statut
       let nouvellesHeures = current.heures_validees;
       if (newStatus === 'absent' || newStatus === 'excuse') nouvellesHeures = 0;
       else if (newStatus === 'present' && current.heures_validees === 0) nouvellesHeures = dureeSeance;
@@ -155,9 +148,11 @@ export default function Suivi() {
     });
   };
 
+  // --- LOGIQUE DES JUSTIFICATIFS ---
   const openJustifModal = async (apprenantId) => {
     setJustifModal({ open: true, apprenantId });
     setLoadingDocs(true);
+    // On va chercher les documents de l'apprenant dans le Storage / table documents
     const { data } = await supabase
       .from('documents')
       .select('*')
@@ -174,25 +169,28 @@ export default function Suivi() {
       [justifModal.apprenantId]: { 
         ...prev[justifModal.apprenantId], 
         justificatif_id: docId, 
-        status: 'excuse' 
+        status: 'excuse' // On passe automatiquement le statut en "Excusé"
       }
     }));
     setJustifModal({ open: false, apprenantId: null });
   };
+  // ---------------------------------
 
   const handleSavePresences = async () => {
     setIsSaving(true);
     setMessage(null);
 
+    // Préparer le tableau d'objets à envoyer à Supabase
     const payload = Object.entries(presencesData).map(([apprenantId, data]) => ({
       seance_id: selectedSeance.id,
       apprenant_id: apprenantId,
       status: data.status,
       heures_validees: parseFloat(data.heures_validees),
       comment: data.comment,
-      justificatif_id: data.justificatif_id 
+      justificatif_id: data.justificatif_id // Inclusion du justificatif
     }));
 
+    // Upsert = Insert si ça n'existe pas, Update si ça existe
     const { error } = await supabase
       .from('presences')
       .upsert(payload, { onConflict: 'seance_id, apprenant_id' });
@@ -210,6 +208,7 @@ export default function Suivi() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500 relative">
       
+      {/* Header et Sélection de date */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -235,6 +234,7 @@ export default function Suivi() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
+        {/* Colonne de gauche : Liste des séances du jour */}
         <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 h-[calc(100vh-240px)] overflow-y-auto">
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 px-2">Séances du {format(parseISO(selectedDate), 'dd/MM/yyyy')}</h2>
           
@@ -278,6 +278,7 @@ export default function Suivi() {
           )}
         </div>
 
+        {/* Colonne de droite : Liste d'appel */}
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-[calc(100vh-240px)] flex flex-col relative">
           {!selectedSeance ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
@@ -372,6 +373,7 @@ export default function Suivi() {
                               </div>
                             </td>
 
+                            {/* NOUVELLE COLONNE : Justificatif */}
                             <td className="px-4 py-4 whitespace-nowrap text-center">
                               {state.justificatif_id ? (
                                 <div className="flex flex-col items-center justify-center text-green-600">
@@ -431,6 +433,7 @@ export default function Suivi() {
         </div>
       </div>
 
+      {/* MODALE DE LIAISON JUSTIFICATIF */}
       {justifModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
