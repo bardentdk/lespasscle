@@ -13,12 +13,12 @@ import {
   Users,
   Paperclip,
   FileText,
-  X
+  X,
+  Lock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext'; // <-- NOUVEL IMPORT ICI
+import { useAuth } from '../context/AuthContext';
 
-// Utilitaire pour calculer la durée en heures décimales (ex: 09:00 à 10:30 -> 1.5)
 const calculateDuration = (startTime, endTime) => {
   const [startH, startM] = startTime.split(':').map(Number);
   const [endH, endM] = endTime.split(':').map(Number);
@@ -28,7 +28,7 @@ const calculateDuration = (startTime, endTime) => {
 };
 
 export default function Suivi() {
-  const { user } = useAuth(); // <-- RÉCUPÉRATION DE L'UTILISATEUR CONNECTÉ
+  const { user } = useAuth(); 
   
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [seances, setSeances] = useState([]);
@@ -42,17 +42,23 @@ export default function Suivi() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState(null); 
 
+  // --- NOUVEAU : État pour savoir si l'appel est déjà fait ---
+  const [isAppelFait, setIsAppelFait] = useState(false);
+
   const [justifModal, setJustifModal] = useState({ open: false, apprenantId: null });
   const [apprenantDocs, setApprenantDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
+  // Verrouillage de l'interface (Le formateur est bloqué, l'Admin peut contourner)
+  const isLocked = isAppelFait && user?.profile?.role !== 'admin';
+
   useEffect(() => {
-    // On s'assure que l'utilisateur est bien chargé avant de lancer la requête
     if (user) {
       fetchSeancesForDate(selectedDate);
       setSelectedSeance(null);
       setApprenants([]);
       setMessage(null);
+      setIsAppelFait(false);
     }
   }, [selectedDate, user]);
 
@@ -65,20 +71,16 @@ export default function Suivi() {
 
   const fetchSeancesForDate = async (date) => {
     setLoadingSeances(true);
-    
-    // 1. On prépare la requête de base (pour le jour sélectionné)
     let query = supabase
       .from('seances')
       .select('*, groupes(name), profiles(first_name, last_name)')
       .eq('date', date)
       .order('start_time');
 
-    // 2. LE FILTRE MAGIQUE : Si c'est un formateur, il ne voit QUE ses propres séances
     if (user?.profile?.role === 'formateur') {
       query = query.eq('formateur_id', user.profile.id);
     }
 
-    // L'Admin passera outre ce if et verra toutes les séances
     const { data, error } = await query;
 
     if (error) console.error(error);
@@ -108,6 +110,13 @@ export default function Suivi() {
     const apprenantsList = groupeData.map(g => g.profiles).sort((a, b) => a.last_name.localeCompare(b.last_name));
     setApprenants(apprenantsList);
 
+    // --- VÉRIFICATION DU VERROUILLAGE ---
+    if (existingPresences && existingPresences.length > 0) {
+      setIsAppelFait(true);
+    } else {
+      setIsAppelFait(false);
+    }
+
     const dureeSeance = calculateDuration(seance.start_time, seance.end_time);
     const presencesMap = {};
 
@@ -136,6 +145,8 @@ export default function Suivi() {
   };
 
   const handleStatusChange = (apprenantId, newStatus) => {
+    if (isLocked) return; // Sécurité supplémentaire
+
     setPresencesData(prev => {
       const current = prev[apprenantId];
       const dureeSeance = calculateDuration(selectedSeance.start_time, selectedSeance.end_time);
@@ -156,6 +167,7 @@ export default function Suivi() {
   };
 
   const openJustifModal = async (apprenantId) => {
+    if (isLocked) return;
     setJustifModal({ open: true, apprenantId });
     setLoadingDocs(true);
     const { data } = await supabase
@@ -203,13 +215,13 @@ export default function Suivi() {
       console.error(error);
       setMessage({ type: 'error', text: "Erreur lors de l'enregistrement des présences." });
     } else {
+      setIsAppelFait(true); // On verrouille immédiatement après l'enregistrement
       setMessage({ type: 'success', text: "Appel enregistré avec succès !" });
     }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 relative">
-      
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -234,7 +246,6 @@ export default function Suivi() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 h-[calc(100vh-240px)] overflow-y-auto">
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 px-2">Séances du {format(parseISO(selectedDate), 'dd/MM/yyyy')}</h2>
           
@@ -295,17 +306,33 @@ export default function Suivi() {
                 </div>
                 <button
                   onClick={handleSavePresences}
-                  disabled={isSaving || apprenants.length === 0}
-                  className="flex items-center px-6 py-2.5 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 transition-all shadow-lg shadow-brand-100 disabled:opacity-50"
+                  disabled={isSaving || apprenants.length === 0 || isLocked}
+                  className={`flex items-center px-6 py-2.5 font-bold rounded-xl transition-all shadow-sm ${
+                    isLocked 
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-brand-600 text-white hover:bg-brand-700 shadow-brand-100 disabled:opacity-50'
+                  }`}
                 >
-                  {isSaving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Save className="h-5 w-5 mr-2" />}
-                  Enregistrer l'appel
+                  {isSaving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (isAppelFait ? <Lock className="h-5 w-5 mr-2" /> : <Save className="h-5 w-5 mr-2" />)}
+                  {isAppelFait ? (user?.profile?.role === 'admin' ? "Mettre à jour l'appel" : "Appel clôturé") : "Enregistrer l'appel"}
                 </button>
               </div>
 
-              {message && (
+              {/* Message informatif si l'appel est verrouillé */}
+              {isAppelFait && (
+                <div className={`mb-6 p-4 rounded-xl flex items-center ${user?.profile?.role === 'admin' ? 'bg-purple-50 text-purple-800 border border-purple-200' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+                  {user?.profile?.role === 'admin' ? <AlertCircle className="h-5 w-5 mr-3 shrink-0" /> : <Lock className="h-5 w-5 mr-3 shrink-0" />}
+                  <p className="text-sm font-medium">
+                    {user?.profile?.role === 'admin' 
+                      ? "L'appel a déjà été validé par le formateur. En tant qu'administrateur, vous pouvez encore le modifier." 
+                      : "L'appel a été validé. Seul un administrateur peut le modifier."}
+                  </p>
+                </div>
+              )}
+
+              {message && !isAppelFait && (
                 <div className={`mb-6 p-4 rounded-xl flex items-center ${message.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
-                  {message.type === 'success' ? <CheckCircle2 className="h-5 w-5 mr-3" /> : <AlertCircle className="h-5 w-5 mr-3" />}
+                  {message.type === 'success' ? <CheckCircle2 className="h-5 w-5 mr-3 shrink-0" /> : <AlertCircle className="h-5 w-5 mr-3 shrink-0" />}
                   <p className="text-sm font-medium">{message.text}</p>
                 </div>
               )}
@@ -323,7 +350,7 @@ export default function Suivi() {
                         <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Statut</th>
                         <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Justif.</th>
                         <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Heures</th>
-                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider rounded-tr-xl">Commentaire (optionnel)</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider rounded-tr-xl">Commentaire</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
@@ -344,28 +371,48 @@ export default function Suivi() {
                             </td>
                             
                             <td className="px-4 py-4 whitespace-nowrap text-center">
-                              <div className="flex items-center justify-center space-x-1 bg-gray-100 p-1 rounded-lg inline-flex">
+                              <div className={`flex items-center justify-center space-x-1 p-1 rounded-lg inline-flex ${isLocked ? 'bg-transparent' : 'bg-gray-100'}`}>
                                 <button 
                                   onClick={() => handleStatusChange(apprenant.id, 'present')}
-                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${state.status === 'present' ? 'bg-green-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                  disabled={isLocked}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all 
+                                    ${state.status === 'present' ? 'bg-green-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}
+                                    ${isLocked && state.status !== 'present' ? 'opacity-30' : ''}
+                                    ${isLocked ? 'cursor-default hover:text-current' : ''}
+                                  `}
                                 >
                                   Présent
                                 </button>
                                 <button 
                                   onClick={() => handleStatusChange(apprenant.id, 'absent')}
-                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${state.status === 'absent' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                  disabled={isLocked}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all 
+                                    ${state.status === 'absent' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}
+                                    ${isLocked && state.status !== 'absent' ? 'opacity-30' : ''}
+                                    ${isLocked ? 'cursor-default hover:text-current' : ''}
+                                  `}
                                 >
                                   Absent
                                 </button>
                                 <button 
                                   onClick={() => handleStatusChange(apprenant.id, 'retard')}
-                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${state.status === 'retard' ? 'bg-orange-400 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                  disabled={isLocked}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all 
+                                    ${state.status === 'retard' ? 'bg-orange-400 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}
+                                    ${isLocked && state.status !== 'retard' ? 'opacity-30' : ''}
+                                    ${isLocked ? 'cursor-default hover:text-current' : ''}
+                                  `}
                                 >
                                   Retard
                                 </button>
                                 <button 
                                   onClick={() => handleStatusChange(apprenant.id, 'excuse')}
-                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${state.status === 'excuse' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                  disabled={isLocked}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all 
+                                    ${state.status === 'excuse' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}
+                                    ${isLocked && state.status !== 'excuse' ? 'opacity-30' : ''}
+                                    ${isLocked ? 'cursor-default hover:text-current' : ''}
+                                  `}
                                 >
                                   Excusé
                                 </button>
@@ -374,14 +421,15 @@ export default function Suivi() {
 
                             <td className="px-4 py-4 whitespace-nowrap text-center">
                               {state.justificatif_id ? (
-                                <div className="flex flex-col items-center justify-center text-green-600">
+                                <div className={`flex flex-col items-center justify-center ${isLocked ? 'text-gray-400' : 'text-green-600'}`}>
                                   <CheckCircle2 className="h-5 w-5 mb-0.5" />
-                                  <button onClick={() => openJustifModal(apprenant.id)} className="text-[10px] font-bold underline hover:text-green-800">Lié</button>
+                                  <button onClick={() => openJustifModal(apprenant.id)} disabled={isLocked} className={`text-[10px] font-bold ${isLocked ? '' : 'underline hover:text-green-800'}`}>Lié</button>
                                 </div>
                               ) : (
                                 <button 
                                   onClick={() => openJustifModal(apprenant.id)}
-                                  className={`p-2 rounded-lg transition-colors ${state.status === 'absent' ? 'bg-red-50 text-red-600 animate-pulse hover:bg-red-100' : 'bg-gray-50 text-gray-400 hover:bg-gray-200'}`}
+                                  disabled={isLocked}
+                                  className={`p-2 rounded-lg transition-colors ${state.status === 'absent' && !isLocked ? 'bg-red-50 text-red-600 animate-pulse hover:bg-red-100' : 'bg-gray-50 text-gray-400'} ${isLocked ? 'opacity-50 cursor-not-allowed bg-transparent' : 'hover:bg-gray-200'}`}
                                   title="Lier un justificatif"
                                 >
                                   <Paperclip className="h-4 w-4" />
@@ -395,11 +443,13 @@ export default function Suivi() {
                                 step="0.5"
                                 min="0"
                                 value={state.heures_validees}
+                                disabled={isLocked}
                                 onChange={(e) => setPresencesData(prev => ({
                                   ...prev,
                                   [apprenant.id]: { ...prev[apprenant.id], heures_validees: e.target.value }
                                 }))}
-                                className={`w-20 text-center font-bold px-2 py-1.5 border rounded-lg focus:ring-2 focus:outline-none ${
+                                className={`w-20 text-center font-bold px-2 py-1.5 border rounded-lg focus:ring-2 focus:outline-none transition-all ${
+                                  isLocked ? 'bg-transparent border-transparent text-gray-500 cursor-default' : 
                                   state.status === 'present' ? 'border-green-200 text-green-700 bg-green-50 focus:ring-green-500' :
                                   state.status === 'absent' ? 'border-red-200 text-red-700 bg-red-50 focus:ring-red-500 opacity-50' :
                                   'border-gray-200 text-gray-700 bg-white focus:ring-brand-500'
@@ -410,13 +460,18 @@ export default function Suivi() {
                             <td className="px-4 py-4 w-full">
                               <input
                                 type="text"
-                                placeholder={state.status === 'retard' ? "Combien de temps ?" : "Raison de l'absence..."}
+                                placeholder={isLocked ? "" : (state.status === 'retard' ? "Combien de temps ?" : "Raison de l'absence...")}
                                 value={state.comment}
+                                disabled={isLocked}
                                 onChange={(e) => setPresencesData(prev => ({
                                   ...prev,
                                   [apprenant.id]: { ...prev[apprenant.id], comment: e.target.value }
                                 }))}
-                                className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                className={`w-full text-sm px-3 py-1.5 border rounded-lg focus:outline-none transition-all ${
+                                  isLocked 
+                                    ? 'bg-transparent border-transparent text-gray-500 cursor-default' 
+                                    : 'border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-brand-500'
+                                }`}
                               />
                             </td>
                           </tr>
