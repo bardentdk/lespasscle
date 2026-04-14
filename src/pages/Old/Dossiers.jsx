@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
-import { Search, FolderOpen, UploadCloud, FileText, Download, Trash2, Loader2, AlertCircle, FileBadge, Camera, CheckCircle2 } from 'lucide-react';
+import { Search, FolderOpen, UploadCloud, FileText, Download, Trash2, Loader2, AlertCircle, FileBadge } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Dossiers() {
@@ -21,16 +21,15 @@ export default function Dossiers() {
 
   const [fileTitle, setFileTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
-  
-  // Deux références distinctes pour les deux actions
   const fileInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
 
   useEffect(() => {
     if (isApprenant && user?.profile) {
+      // Vue personnelle pour l'apprenant
       setSelectedApprenant(user.profile);
       setLoadingApprenants(false);
     } else {
+      // Vue globale pour l'admin
       fetchApprenants();
     }
   }, [isApprenant, user]);
@@ -38,7 +37,9 @@ export default function Dossiers() {
   useEffect(() => {
     if (selectedApprenant) {
       fetchDocuments(selectedApprenant.id);
-      resetForm();
+      setFileTitle('');
+      setSelectedFile(null);
+      setError(null);
     }
   }, [selectedApprenant]);
 
@@ -68,21 +69,6 @@ export default function Dossiers() {
     setLoadingDocs(false);
   };
 
-  const resetForm = () => {
-    setFileTitle('');
-    setSelectedFile(null);
-    setError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
-  };
-
-  const handleFileSelect = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-      setError(null);
-    }
-  };
-
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!selectedFile || !fileTitle || !selectedApprenant) return;
@@ -94,22 +80,30 @@ export default function Dossiers() {
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${selectedApprenant.id}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
+      const { error: uploadError } = await supabase.storage.from('dossiers').upload(filePath, selectedFile);
       if (uploadError) throw uploadError;
 
+      // const { error: dbError } = await supabase.from('documents').insert([{
+      //   apprenant_id: selectedApprenant.id,
+      //   title: fileTitle,
+      //   file_path: filePath,
+      //   file_type: selectedFile.type || 'application/octet-stream',
+      //   uploaded_by: user?.id 
+      // }]);
       const { error: dbError } = await supabase.from('documents').insert([{
         apprenant_id: selectedApprenant.id,
         title: fileTitle,
-        file_url: filePath, // Modifié pour correspondre à ton schéma SQL (file_url au lieu de file_path)
-        type: selectedFile.type || 'application/octet-stream',
-        uploaded_by: user?.profile?.id
+        file_path: filePath,
+        file_type: selectedFile.type || 'application/octet-stream',
+        uploaded_by: user?.profile?.id // <-- LA CORRECTION
       }]);
       if (dbError) throw dbError;
 
       fetchDocuments(selectedApprenant.id);
-      resetForm();
+      setFileTitle('');
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
-      console.error(err);
       setError("Erreur lors de l'envoi. Vérifiez la taille du fichier et votre connexion.");
     } finally {
       setIsUploading(false);
@@ -117,14 +111,14 @@ export default function Dossiers() {
   };
 
   const handleDownload = async (filePath) => {
-    const { data, error } = await supabase.storage.from('documents').createSignedUrl(filePath, 60);
+    const { data, error } = await supabase.storage.from('dossiers').createSignedUrl(filePath, 60);
     if (error) alert("Erreur lors de la génération du lien.");
     else window.open(data.signedUrl, '_blank');
   };
 
   const handleDelete = async (docId, filePath) => {
     if (!window.confirm("Supprimer ce document définitivement ?")) return;
-    await supabase.storage.from('documents').remove([filePath]);
+    await supabase.storage.from('dossiers').remove([filePath]);
     await supabase.from('documents').delete().eq('id', docId);
     fetchDocuments(selectedApprenant.id);
   };
@@ -172,7 +166,7 @@ export default function Dossiers() {
           </div>
         )}
 
-        {/* Colonne de droite */}
+        {/* Colonne de droite : Prend 4 colonnes pour l'apprenant, 3 pour l'admin */}
         <div className={`${isApprenant ? 'lg:col-span-4' : 'lg:col-span-3'} bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden`}>
           {!selectedApprenant ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50">
@@ -194,80 +188,28 @@ export default function Dossiers() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 bg-gray-50/30">
-                
-                {/* FORMULAIRE D'UPLOAD AVEC APPAREIL PHOTO */}
-                <form onSubmit={handleUpload} className="mb-8 bg-white p-6 rounded-2xl border border-dashed border-brand-200 shadow-sm">
-                  <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center">
-                    <UploadCloud className="h-4 w-4 mr-2 text-brand-500" /> 
-                    Ajouter un justificatif
-                  </h3>
-                  
+                <form onSubmit={handleUpload} className="mb-8 bg-white p-5 rounded-2xl border border-dashed border-brand-200 shadow-sm">
+                  <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center"><UploadCloud className="h-4 w-4 mr-2 text-brand-500" /> Ajouter un document</h3>
                   {error && <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-sm text-red-700 flex items-center"><AlertCircle className="h-4 w-4 mr-2" /> {error}</div>}
-                  
-                  <div className="space-y-4">
-                    {/* Zone de saisie du titre */}
-                    <input 
-                      type="text" 
-                      required 
-                      placeholder="Nom du document (ex: Carte d'identité, Arrêt maladie...)" 
-                      value={fileTitle} 
-                      onChange={(e) => setFileTitle(e.target.value)} 
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" 
-                    />
-
-                    {/* Inputs cachés */}
-                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
-                    {/* L'attribut capture="environment" force l'ouverture de l'appareil photo sur mobile */}
-                    <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" />
-
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      {/* Bouton Appareil Photo */}
-                      <button 
-                        type="button" 
-                        onClick={() => cameraInputRef.current?.click()}
-                        className="flex-1 flex items-center justify-center px-4 py-3 bg-brand-50 text-brand-700 font-medium rounded-xl hover:bg-brand-100 transition-colors border border-brand-100"
-                      >
-                        <Camera className="h-5 w-5 mr-2" />
-                        Prendre une photo
-                      </button>
-
-                      {/* Bouton Explorateur de fichiers */}
-                      <button 
-                        type="button" 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 flex items-center justify-center px-4 py-3 bg-gray-50 text-gray-700 font-medium rounded-xl hover:bg-gray-100 transition-colors border border-gray-200"
-                      >
-                        <FolderOpen className="h-5 w-5 mr-2" />
-                        Parcourir les fichiers
-                      </button>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1">
+                      <input type="text" required placeholder="Titre (ex: Carte d'identité)" value={fileTitle} onChange={(e) => setFileTitle(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" />
                     </div>
-
-                    {/* Feedback du fichier sélectionné */}
-                    {selectedFile && (
-                      <div className="flex items-center justify-between p-3 bg-green-50 text-green-700 rounded-xl border border-green-100">
-                        <div className="flex items-center truncate">
-                          <CheckCircle2 className="h-5 w-5 mr-2 shrink-0 text-green-500" />
-                          <span className="text-sm font-medium truncate">{selectedFile.name}</span>
-                        </div>
-                        <button type="submit" disabled={isUploading || !fileTitle} className="ml-4 shrink-0 px-6 py-2 bg-brand-600 text-white font-bold rounded-lg hover:bg-brand-700 shadow-sm disabled:opacity-50 flex items-center">
-                          {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} 
-                          {isUploading ? 'Envoi...' : 'Enregistrer'}
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex-1 relative">
+                      <input type="file" required ref={fileInputRef} onChange={(e) => setSelectedFile(e.target.files[0])} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 border border-gray-200 rounded-xl cursor-pointer" />
+                    </div>
+                    <button type="submit" disabled={isUploading || !selectedFile || !fileTitle} className="px-6 py-2.5 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 shadow-md disabled:opacity-50 flex items-center justify-center min-w-[140px]">
+                      {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UploadCloud className="h-4 w-4 mr-2" />} {isUploading ? 'Envoi...' : 'Envoyer'}
+                    </button>
                   </div>
                 </form>
 
-                {/* LISTE DES DOCUMENTS */}
                 <div>
                   <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Documents enregistrés ({documents.length})</h3>
                   {loadingDocs ? (
                     <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 text-brand-500 animate-spin" /></div>
                   ) : documents.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
-                      <FileBadge className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-                      <p className="text-gray-500 font-medium">Aucun document dans le dossier.</p>
-                    </div>
+                    <div className="text-center py-12 bg-white rounded-2xl border border-gray-100"><FileBadge className="h-12 w-12 text-gray-200 mx-auto mb-3" /><p className="text-gray-500 font-medium">Aucun document.</p></div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {documents.map((doc) => (
@@ -280,12 +222,8 @@ export default function Dossiers() {
                             </div>
                           </div>
                           <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleDownload(doc.file_url)} className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg" title="Télécharger">
-                              <Download className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => handleDelete(doc.id, doc.file_url)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Supprimer">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <button onClick={() => handleDownload(doc.file_path)} className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg"><Download className="h-4 w-4" /></button>
+                            <button onClick={() => handleDelete(doc.id, doc.file_path)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="h-4 w-4" /></button>
                           </div>
                         </div>
                       ))}
