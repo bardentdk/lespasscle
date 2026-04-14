@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
-  Layers, Users, Plus, Search, X, Loader2, Check, UserMinus, UserPlus
+  Layers, Users, Plus, Search, X, Loader2, Check, UserMinus, UserPlus, Target
 } from 'lucide-react';
 
 export default function Groupes() {
@@ -13,7 +13,8 @@ export default function Groupes() {
   
   // Modal Création
   const [showModal, setShowModal] = useState(false);
-  const [newGroup, setNewGroup] = useState({ name: '', description: '' });
+  // NOUVEAU : Ajout de l'objectif_heures par défaut à 150
+  const [newGroup, setNewGroup] = useState({ name: '', description: '', objectif_heures: 150 });
 
   useEffect(() => {
     fetchData();
@@ -39,7 +40,6 @@ export default function Groupes() {
     setLoading(false);
   };
 
-  // Recharger spécifiquement les relations du groupe sélectionné
   const loadGroupDetails = async (groupe) => {
     const { data } = await supabase
       .from('groupes_apprenants')
@@ -55,28 +55,25 @@ export default function Groupes() {
     const { error } = await supabase.from('groupes').insert([newGroup]);
     
     if (error) {
-      alert("Erreur de création : " + error.message); // Affiche l'erreur à l'écran
+      alert("Erreur de création : " + error.message);
     } else {
       setShowModal(false);
-      setNewGroup({ name: '', description: '' });
+      setNewGroup({ name: '', description: '', objectif_heures: 150 });
       fetchData();
     }
   };
 
   const toggleStudent = async (apprenantId, isAssigned) => {
     if (isAssigned) {
-      // Retirer du groupe
       await supabase.from('groupes_apprenants').delete()
         .match({ groupe_id: selectedGroupe.id, apprenant_id: apprenantId });
     } else {
-      // Ajouter au groupe
       await supabase.from('groupes_apprenants').insert([
         { groupe_id: selectedGroupe.id, apprenant_id: apprenantId }
       ]);
     }
-    // Rafraîchir la vue
     loadGroupDetails(selectedGroupe);
-    fetchData(); // Pour mettre à jour les compteurs
+    fetchData(); 
   };
 
   const filteredApprenants = apprenants.filter(a => 
@@ -97,7 +94,6 @@ export default function Groupes() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        {/* Colonne Gauche : Liste des Groupes */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50">
             <h2 className="font-bold text-gray-700 flex items-center">
@@ -116,9 +112,16 @@ export default function Groupes() {
                   }`}
                 >
                   <h3 className={`font-bold ${selectedGroupe?.id === g.id ? 'text-brand-900' : 'text-gray-900'}`}>{g.name}</h3>
-                  <div className="flex items-center text-xs text-gray-500 mt-2">
-                    <Users className="h-4 w-4 mr-1.5" />
-                    {g.groupes_apprenants?.[0]?.count || 0} apprenants inscrits
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center text-xs text-gray-500">
+                      <Users className="h-4 w-4 mr-1.5" />
+                      {g.groupes_apprenants?.[0]?.count || 0} inscrits
+                    </div>
+                    {/* AFFICHAGE DE L'OBJECTIF */}
+                    <div className="flex items-center text-[10px] font-bold text-brand-600 bg-brand-50 px-2 py-1 rounded-md">
+                      <Target className="h-3 w-3 mr-1" />
+                      {g.objectif_heures}h
+                    </div>
                   </div>
                 </button>
               ))
@@ -126,7 +129,6 @@ export default function Groupes() {
           </div>
         </div>
 
-        {/* Colonne Droite : Affectation (Cachée si aucun groupe sélectionné) */}
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
           {!selectedGroupe ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
@@ -189,7 +191,6 @@ export default function Groupes() {
         </div>
       </div>
 
-      {/* Modal Création de Groupe */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden">
@@ -202,6 +203,16 @@ export default function Groupes() {
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nom du groupe</label>
                 <input required type="text" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" placeholder="Ex: Développeurs Web 2024" value={newGroup.name} onChange={e => setNewGroup({...newGroup, name: e.target.value})} />
               </div>
+              
+              {/* NOUVEAU CHAMP : Objectif d'heures */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Objectif total d'heures</label>
+                <div className="relative">
+                  <input required type="number" min="1" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 pr-10" placeholder="Ex: 150" value={newGroup.objectif_heures} onChange={e => setNewGroup({...newGroup, objectif_heures: parseInt(e.target.value) || 0})} />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">h</span>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description (optionnel)</label>
                 <textarea className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" rows="3" value={newGroup.description} onChange={e => setNewGroup({...newGroup, description: e.target.value})}></textarea>
