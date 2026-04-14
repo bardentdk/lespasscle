@@ -1,24 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
 import { 
   UserCog, Plus, Search, Mail, Phone, 
   Edit2, Trash2, X, Loader2, Shield, Briefcase, CheckCircle2 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-
-// 🚨 Client secondaire pour la création de comptes sans déconnexion de l'admin
-const supabaseSecondary = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  }
-);
 
 export default function Equipe() {
   const { user } = useAuth();
@@ -75,56 +61,38 @@ export default function Equipe() {
     setIsSubmitting(true);
     setMessage(null);
 
-    try {
-      if (editingMember) {
-        // --- MISE À JOUR D'UN MEMBRE EXISTANT ---
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            phone: formData.phone,
-            role: formData.role
-          })
-          .eq('id', editingMember.id);
-        
-        if (updateError) throw updateError;
+    const payload = { ...formData };
 
-      } else {
-        // --- CRÉATION D'UN NOUVEAU MEMBRE ---
-        // 1. Création dans Auth via le client secondaire (déclenche le Trigger SQL)
-        const tempPassword = crypto.randomUUID() + "A1!";
-        const { error: signUpError } = await supabaseSecondary.auth.signUp({
-          email: formData.email,
-          password: tempPassword,
-          options: {
-            data: {
-              first_name: formData.first_name,
-              last_name: formData.last_name,
-              role: formData.role,
-              phone: formData.phone || null
-            }
-          }
-        });
+    let error;
+    if (editingMember) {
+      // Mise à jour
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq('id', editingMember.id);
+      error = updateError;
+    } else {
+      // Création
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert([payload]);
+      error = insertError;
 
-        if (signUpError) throw signUpError;
-
-        // 2. Envoi de l'invitation (reset password)
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, { 
+      // ✅ CORRECTION ICI : on utilise payload.email
+      if (!insertError) {
+        await supabase.auth.resetPasswordForEmail(payload.email, { 
           redirectTo: `${window.location.origin}/update-password` 
         });
-
-        if (resetError) {
-           console.warn("Compte créé mais email non envoyé:", resetError.message);
-        }
       }
+    }
 
+    setIsSubmitting(false);
+
+    if (error) {
+      setMessage({ type: 'error', text: "Une erreur est survenue : " + error.message });
+    } else {
       setIsModalOpen(false);
       fetchTeam();
-    } catch (error) {
-      setMessage({ type: 'error', text: "Erreur : " + error.message });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -150,6 +118,7 @@ export default function Equipe() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
+      {/* Header & Actions */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gestion de l'Équipe</h1>
@@ -164,6 +133,7 @@ export default function Equipe() {
         </button>
       </div>
 
+      {/* Barre de recherche */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
         <input 
@@ -175,6 +145,7 @@ export default function Equipe() {
         />
       </div>
 
+      {/* Tableau de l'Équipe */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="py-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-brand-600" /></div>
@@ -195,7 +166,7 @@ export default function Equipe() {
                     <td className="px-6 py-4">
                       <div className="flex items-center">
                         <div className="h-10 w-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-600 font-bold mr-4 border border-brand-100">
-                          {member.first_name?.[0]}{member.last_name?.[0]}
+                          {member.first_name[0]}{member.last_name[0]}
                         </div>
                         <div>
                           <p className="font-bold text-gray-900">{member.first_name} <span className="uppercase">{member.last_name}</span></p>
@@ -223,8 +194,20 @@ export default function Equipe() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
-                      <button onClick={() => handleOpenModal(member)} className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"><Edit2 className="h-4 w-4" /></button>
-                      <button onClick={() => handleDelete(member.id, member.first_name)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="h-4 w-4" /></button>
+                      <button 
+                        onClick={() => handleOpenModal(member)}
+                        className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                        title="Modifier"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(member.id, member.first_name)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -234,51 +217,60 @@ export default function Equipe() {
         )}
       </div>
 
+      {/* --- MODALE CRUD --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
-              <h2 className="text-xl font-bold text-gray-900">{editingMember ? 'Modifier le profil' : 'Nouveau membre'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-1.5 bg-white hover:bg-gray-100 rounded-full shadow-sm"><X className="h-4 w-4 text-gray-500" /></button>
+              <h2 className="text-xl font-bold text-gray-900">
+                {editingMember ? 'Modifier le profil' : 'Nouveau membre'}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-1.5 bg-white hover:bg-gray-100 rounded-full transition-colors shadow-sm"><X className="h-4 w-4 text-gray-500" /></button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {message && <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-medium">{message.text}</div>}
+              {message && (
+                <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-medium">
+                  {message.text}
+                </div>
+              )}
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Prénom</label>
-                  <input required type="text" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Prénom</label>
+                  <input required type="text" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-brand-500 outline-none" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nom</label>
-                  <input required type="text" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Nom</label>
+                  <input required type="text" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-brand-500 outline-none" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
                 </div>
               </div>
 
-              {!editingMember && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                  <input required type="email" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                </div>
-              )}
-
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Téléphone</label>
-                <input type="tel" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Email</label>
+                <input required type="email" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-brand-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Rôle</label>
-                <select className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 font-medium" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Téléphone (Optionnel)</label>
+                <input type="tel" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-brand-500 outline-none" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Rôle</label>
+                <select 
+                  className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-brand-500 outline-none font-medium" 
+                  value={formData.role} 
+                  onChange={e => setFormData({...formData, role: e.target.value})}
+                >
                   <option value="formateur">Formateur</option>
                   <option value="admin">Administrateur</option>
                 </select>
               </div>
 
               <div className="pt-2">
-                <button type="submit" disabled={isSubmitting} className="w-full py-3 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 shadow-md flex justify-center items-center disabled:opacity-50">
-                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (editingMember ? <CheckCircle2 className="h-5 w-5 mr-2" /> : <Plus className="h-5 w-5 mr-2" />)}
+                <button type="submit" disabled={isSubmitting} className="w-full py-3 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 transition-all shadow-md flex justify-center items-center disabled:opacity-50">
+                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (editingMember ? <CheckCircle2 className="h-5 w-5 mr-2" /> : <UserCog className="h-5 w-5 mr-2" />)}
                   {isSubmitting ? 'Enregistrement...' : (editingMember ? 'Mettre à jour' : 'Ajouter à l\'équipe')}
                 </button>
               </div>
@@ -286,6 +278,7 @@ export default function Equipe() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

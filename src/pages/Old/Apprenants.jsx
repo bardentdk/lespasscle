@@ -1,25 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
 import Papa from 'papaparse';
 import { 
   Users, Plus, UploadCloud, Search, Mail, Phone, 
   MoreVertical, X, CheckCircle2, AlertCircle, Loader2 
 } from 'lucide-react';
-
-// 🚨 L'ASTUCE MAGIQUE : Un client secondaire qui ne mémorise pas la session.
-// Cela permet à l'Admin de créer des comptes sans se faire déconnecter !
-const supabaseSecondary = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  }
-);
 
 export default function Apprenants() {
   const [apprenants, setApprenants] = useState([]);
@@ -57,37 +42,22 @@ export default function Apprenants() {
     e.preventDefault();
     setStatusMsg(null);
     
-    // On génère un mot de passe temporaire robuste pour contourner l'obligation
-    const tempPassword = crypto.randomUUID() + "A1!";
+    const mockId = crypto.randomUUID(); 
 
-    // 1. On utilise le client secondaire pour créer le compte dans Auth
-    // Le Trigger SQL va automatiquement créer la ligne dans 'profiles' !
-    const { error: signUpError } = await supabaseSecondary.auth.signUp({
-      email: formData.email,
-      password: tempPassword,
-      options: {
-        data: {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          role: 'apprenant',
-          phone: formData.phone || null
-        }
-      }
-    });
+    const { error } = await supabase.from('profiles').insert([{
+      id: mockId,
+      role: 'apprenant',
+      ...formData
+    }]);
 
-    if (signUpError) {
-      setStatusMsg({ type: 'error', text: signUpError.message });
-      return;
-    }
-
-    // 2. On envoie l'email pour que l'apprenant crée son propre mot de passe
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, { 
-      redirectTo: `${window.location.origin}/update-password` 
-    });
-
-    if (resetError) {
-      setStatusMsg({ type: 'error', text: "Compte créé, mais échec de l'envoi de l'email : " + resetError.message });
+    if (error) {
+      setStatusMsg({ type: 'error', text: error.message });
     } else {
+      // ✅ CORRECTION ICI : on utilise formData.email
+      await supabase.auth.resetPasswordForEmail(formData.email, { 
+        redirectTo: `${window.location.origin}/update-password` 
+      });
+
       setShowManualModal(false);
       setFormData({ first_name: '', last_name: '', email: '', phone: '' });
       fetchApprenants();
@@ -114,6 +84,8 @@ export default function Apprenants() {
         }
 
         const payload = rows.map(row => ({
+          id: crypto.randomUUID(),
+          role: 'apprenant',
           first_name: row.first_name || row.prenom || '',
           last_name: row.last_name || row.nom || '',
           email: row.email || '',
@@ -125,42 +97,21 @@ export default function Apprenants() {
           return;
         }
 
-        setStatusMsg({ type: 'success', text: "Importation en cours, veuillez patienter..." });
+        const { error } = await supabase.from('profiles').insert(payload);
 
-        let errorsCount = 0;
-
-        // On boucle sur chaque utilisateur pour les créer proprement via Auth
-        for (const user of payload) {
-          const tempPassword = crypto.randomUUID() + "A1!";
-          
-          const { error: signUpError } = await supabaseSecondary.auth.signUp({
-            email: user.email,
-            password: tempPassword,
-            options: {
-              data: {
-                first_name: user.first_name,
-                last_name: user.last_name,
-                role: 'apprenant',
-                phone: user.phone
-              }
-            }
-          });
-
-          if (!signUpError) {
+        if (error) {
+          setStatusMsg({ type: 'error', text: "Erreur lors de l'import : " + error.message });
+        } else {
+          // ✅ CORRECTION ICI : on utilise user.email dans la boucle
+          for (const user of payload) {
             await supabase.auth.resetPasswordForEmail(user.email, { 
               redirectTo: `${window.location.origin}/update-password` 
             });
-          } else {
-            errorsCount++;
           }
-        }
 
-        if (errorsCount > 0) {
-          setStatusMsg({ type: 'error', text: `${errorsCount} compte(s) n'ont pas pu être créés (email existant ou erreur).` });
-        } else {
           setShowCsvModal(false);
+          fetchApprenants();
         }
-        fetchApprenants();
       },
       error: (err) => setStatusMsg({ type: 'error', text: err.message })
     });
@@ -267,7 +218,7 @@ export default function Apprenants() {
               <button onClick={() => setShowManualModal(false)}><X className="h-5 w-5 text-gray-400" /></button>
             </div>
             <form onSubmit={handleManualSubmit} className="p-6 space-y-4">
-              {statusMsg && <div className={`p-3 text-sm rounded-xl ${statusMsg.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{statusMsg.text}</div>}
+              {statusMsg && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-xl">{statusMsg.text}</div>}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Prénom</label>
@@ -301,7 +252,7 @@ export default function Apprenants() {
               <button onClick={() => setShowCsvModal(false)}><X className="h-5 w-5 text-gray-400" /></button>
             </div>
             <div className="p-6">
-              {statusMsg && <div className={`mb-4 p-3 text-sm rounded-xl ${statusMsg.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{statusMsg.text}</div>}
+              {statusMsg && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-xl">{statusMsg.text}</div>}
               
               <div className="border-2 border-dashed border-brand-200 rounded-2xl p-8 text-center bg-brand-50/30">
                 <UploadCloud className="h-10 w-10 text-brand-500 mx-auto mb-3" />
