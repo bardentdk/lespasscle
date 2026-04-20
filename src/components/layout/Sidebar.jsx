@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { 
   LayoutDashboard, Users, Layers, FolderOpen, 
   CalendarDays, UserCheck, Settings, LogOut, FileText, 
-  FileDown, UserCog 
+  FileDown, UserCog, BadgeInfo
 } from 'lucide-react';
 import Logo from "../../assets/lespasscle-logo.png";
 export default function Sidebar() {
@@ -23,14 +23,15 @@ export default function Sidebar() {
     { name: 'Suivi des heures', href: '/suivi', icon: UserCheck, roles: ['admin', 'formateur'] },
     { name: 'Mon Bilan', href: `/dashboard-apprenant/${user?.profile?.id}`, icon: FileText, roles: ['apprenant'] },
     { name: 'Exports Admin', href: '/exports', icon: FileDown, roles: ['admin'] },
+    // { name: 'Télécharger APK', href: 'https://expo.dev/artifacts/eas/Z6baVffemkfeKZp1iNwva.apk', icon: 'BadgeInfo', roles: ['admin']},
   ];
 
   // Filtrage des items selon le rôle de l'utilisateur
   const filteredNav = navigation.filter(item => item.roles.includes(role));
 
   return (
-    <div className="flex flex-col h-full w-64 bg-white border-r border-gray-200">
-      <div className="flex items-center justify-center h-20 border-b border-gray-100 px-10">
+    <div className="flex flex-col h-full w-64 bg-white border-r border-gray-200 pt-5">
+      <div className="flex items-center justify-center h-20 border-gray-100 px-10">
         <span className="text-xl font-black text-brand-600 tracking-tighter uppercase my-10">
           <div className='h-5'></div>
           <img src={Logo} alt="" width={150}/>
@@ -58,6 +59,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-100 space-y-2">
+        
         <NavLink to="/parametres" className="flex items-center px-4 py-3 text-sm font-bold text-gray-500 rounded-2xl hover:bg-gray-50 transition-colors">
           <Settings className="mr-3 h-5 w-5" />
           Paramètres
